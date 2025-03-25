@@ -87,36 +87,11 @@ export async function sendMessage(userId: string, message: string): Promise<bool
     // Wait a moment before sending
     await driver.sleep(1000);
     
-    // Send the message (try Enter key first)
+    // Send the message using Enter key
     await messageInput.sendKeys(Key.RETURN);
     console.log('Pressed Enter to send message');
     
-    // If Enter key doesn't work, try to find a send button
-    try {
-      const sendMessageButtonSelectors = [
-        'button[aria-label*="Send"]',
-        'button.send',
-        'button.btn-send',
-        'button[title*="Send"]',
-        'div[role="button"][aria-label*="Send"]'
-      ];
-      
-      for (const selector of sendMessageButtonSelectors) {
-        try {
-          const elements = await driver.findElements(By.css(selector));
-          if (elements.length > 0) {
-            console.log(`Found send message button with selector: ${selector}`);
-            await elements[0].click();
-            console.log('Clicked send message button');
-            break;
-          }
-        } catch (err) {
-          console.log(`Send button selector ${selector} failed`);
-        }
-      }
-    } catch (err) {
-      console.log('Failed to find send button, continuing with Enter key approach');
-    }
+    // Note: We removed the send button click attempt to prevent double-sending
     
     // Wait for message to be sent
     await driver.sleep(2000);

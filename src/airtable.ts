@@ -1,32 +1,12 @@
-// This is a placeholder implementation for the Airtable integration
-// In a real implementation, you would use the Airtable API client
-
-// Global Airtable client instance
-let airtableApiKey: string | null = null;
+import { WebDriver, By, until, Key } from 'selenium-webdriver';
+import { getBrowser } from './browser';
 
 /**
- * Initialize the Airtable client
+ * Extract the base view URL from the full Airtable URL
+ * @param url The full Airtable cell URL
+ * @returns The base view URL
  */
-export function initAirtable(): void {
-  console.log('Initializing Airtable client...');
-  
-  // Get API key from environment variables
-  airtableApiKey = process.env.AIRTABLE_API_KEY || null;
-  
-  // Validate API key
-  if (!airtableApiKey) {
-    throw new Error('Missing AIRTABLE_API_KEY in .env file');
-  }
-  
-  console.log('Airtable client initialized successfully');
-}
-
-/**
- * Parse an Airtable cell URL to extract the base ID, table ID, and record ID
- * @param url The Airtable cell URL
- * @returns An object containing the parsed IDs
- */
-function parseAirtableUrl(url: string): { baseId: string; tableId: string; recordId: string; fieldId: string } {
+function getAirtableViewUrl(url: string): string {
   // Example URL: https://airtable.com/appPolYp9eaiqaKKy/tbloOnoLADWQqH2jq/viwRS68PcsEc3nENN/recKwdIFdNygQj6Wu/fldpgW5cCMOzW3s01
   
   try {
@@ -36,17 +16,17 @@ function parseAirtableUrl(url: string): { baseId: string; tableId: string; recor
     // Find the parts that start with the Airtable prefixes
     const baseId = urlParts.find(part => part.startsWith('app')) || '';
     const tableId = urlParts.find(part => part.startsWith('tbl')) || '';
-    const recordId = urlParts.find(part => part.startsWith('rec')) || '';
-    const fieldId = urlParts.find(part => part.startsWith('fld')) || '';
+    const viewId = urlParts.find(part => part.startsWith('viw')) || '';
     
-    if (!baseId || !tableId || !recordId || !fieldId) {
-      throw new Error('Invalid Airtable URL format');
-    }
+    // Construct the view URL
+    const viewUrl = `https://airtable.com/${baseId}/${tableId}/${viewId}`;
+    console.log(`Constructed Airtable view URL: ${viewUrl}`);
     
-    return { baseId, tableId, recordId, fieldId };
+    return viewUrl;
   } catch (error) {
     console.error('Failed to parse Airtable URL:', error);
-    throw new Error('Invalid Airtable URL');
+    // Return the original URL if parsing fails
+    return url;
   }
 }
 
@@ -56,29 +36,34 @@ function parseAirtableUrl(url: string): { baseId: string; tableId: string; recor
  * @param status The status to set ('Sent' or 'Failed')
  * @returns A promise that resolves when the cell is updated
  */
-export async function updateAirtableCell(url: string, status: 'Sent' | 'Failed'): Promise<void> {
+export async function updateAirtableCell(url: string, status: 'Sent' | 'Failed'): Promise<boolean> {
   console.log(`Updating Airtable cell with status: ${status}`);
   
-  if (!airtableApiKey) {
-    console.error('Airtable client not initialized');
-    throw new Error('Airtable client not initialized');
-  }
+  let driver: WebDriver;
   
   try {
-    // Parse the Airtable URL
-    const { baseId, tableId, recordId, fieldId } = parseAirtableUrl(url);
+    // Get browser instance
+    driver = await getBrowser();
     
-    console.log(`Updating record ${recordId} in table ${tableId} of base ${baseId}`);
+    // Navigate directly to the Airtable URL
+    await driver.get(url);
+    console.log(`Navigated to Airtable URL: ${url}`);
     
-    // In a real implementation, you would use the Airtable API to update the cell
-    // For example:
-    // const base = new Airtable({ apiKey: airtableApiKey }).base(baseId);
-    // await base(tableId).update(recordId, { [fieldId]: status });
+    // Wait for the page to load
+    await driver.sleep(5000);
     
-    // For now, we'll just simulate a successful update
-    console.log('Airtable cell updated successfully');
+    // Simply type the status and press Enter
+    await driver.actions().sendKeys(status).perform();
+    await driver.sleep(500);
+    await driver.actions().sendKeys(Key.RETURN).perform();
+    console.log(`Entered status: ${status}`);
+    
+    // Wait for save to complete
+    await driver.sleep(2000);
+    
+    return true;
   } catch (error) {
     console.error('Failed to update Airtable cell:', error);
-    throw error;
+    return false;
   }
 }

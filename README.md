@@ -1,20 +1,19 @@
 # Telegram DMer
 
-A simple TypeScript application that sends Telegram messages from your account and updates Airtable cells with the status.
+A simple TypeScript application that sends Telegram messages from your account and updates Airtable cells with the status using browser automation.
 
 ## Features
 
 - Sends messages from your Telegram account (not a bot)
 - Updates Airtable cells with the status of the message (Sent/Failed)
-- Configurable to use either your business or personal Telegram account
 - Simple HTTP server to receive requests from Airtable automations
+- Uses browser automation to interact with Telegram Web and Airtable
 
 ## Prerequisites
 
 - Node.js (v14 or later)
 - npm or yarn
-- Telegram account
-- Airtable account with API access
+- Chrome browser (included in the project)
 - ngrok (for exposing your local server to the internet)
 
 ## Setup
@@ -24,61 +23,39 @@ A simple TypeScript application that sends Telegram messages from your account a
    ```
    npm install
    ```
-3. Create a `.env` file based on `.env.example`:
+3. Install ngrok globally if you haven't already:
    ```
-   cp .env.example .env
-   ```
-4. Get your Telegram API credentials:
-   - Go to https://my.telegram.org/auth
-   - Log in with your phone number
-   - Go to "API development tools"
-   - Create a new application
-   - Copy the "App api_id" and "App api_hash" to your `.env` file
-
-5. Edit the `.env` file with your credentials:
-   ```
-   TELEGRAM_API_ID=your_api_id
-   TELEGRAM_API_HASH=your_api_hash
-   TELEGRAM_PHONE=your_phone_number
-   TELEGRAM_ACCOUNT=business  # 'business' or 'personal'
-   AIRTABLE_API_KEY=your_airtable_api_key
+   npm install -g ngrok
    ```
 
-6. Install ngrok:
-   - Download from https://ngrok.com/download
-   - Sign up for a free account
-   - Get your auth token and run `ngrok config add-authtoken YOUR_TOKEN`
+## Running the Application
 
-## First Run (Authentication)
-
-The first time you run the application, you'll need to authenticate with Telegram:
-
-1. Build and run the application:
+1. If you have a previous instance running, kill the Node.js process:
    ```
-   npm run build
-   npm start
-   ```
-2. You'll be prompted to enter the code sent to your Telegram account
-3. After successful authentication, a session string will be generated
-4. Add this session string to your `.env` file as `TELEGRAM_SESSION_STRING`
-
-## Using with ngrok
-
-1. Start the server:
-   ```
-   npm start
+   powershell -Command "Stop-Process -Name node -Force"
    ```
 
-2. In a separate terminal, start ngrok to expose your local server:
+2. Start Chrome with remote debugging enabled using the included Chrome executable:
    ```
-   npm run ngrok
+   start "" "chrome-win64\chrome.exe" --remote-debugging-port=9222
    ```
-   or
+
+3. Log in to Telegram Web (https://web.telegram.org/k/) and Airtable in this Chrome instance
+   - This is a critical step! The automation will use your logged-in sessions
+
+4. Run the application in development mode:
+   ```
+   npm run dev
+   ```
+   - You should see "Browser connection established" and "Server running on port 3000"
+
+5. In a separate terminal, start ngrok to expose your local server:
    ```
    ngrok http 3000
    ```
 
-3. ngrok will provide a public URL (e.g., `https://abc123.ngrok-free.app`) that you can use in your Airtable automation
+6. ngrok will provide a public URL (e.g., `https://abc123.ngrok-free.app`) that you can use in your Airtable automation
+   - Note this URL as you'll need it for the Airtable script
 
 ## Airtable Automation Setup
 
@@ -90,8 +67,8 @@ The first time you run the application, you'll need to authenticate with Telegra
    const config = input.config();
    const { telegramId, message, cellUrl } = config;
 
-   // Your ngrok URL
-   const serverUrl = 'https://your-ngrok-url.ngrok-free.app';
+   // Your ngrok URL (replace with your actual URL from ngrok)
+   const serverUrl = 'https://d6c8-124-122-193-54.ngrok-free.app';
 
    const response = await fetch(serverUrl, {
      method: 'POST',
@@ -108,29 +85,53 @@ The first time you run the application, you'll need to authenticate with Telegra
    const result = await response.json();
    return result;
    ```
-5. Configure the input variables to map to your Airtable fields
+5. Configure the input variables to map to your Airtable fields:
+   - `telegramId`: The Telegram username or ID to message (e.g., @username)
+   - `message`: The message content to send
+   - `cellUrl`: The URL of the Airtable cell to update with the status
 
-## Development
+## How It Works
 
-- Run in development mode:
+1. The application connects to your existing Chrome session where you're already logged in to Telegram and Airtable
+2. When a request is received from Airtable:
+   - The application navigates to Telegram Web
+   - Searches for the user by the provided ID/username
+   - Sends the message
+   - Navigates to the Airtable URL
+   - Updates the cell with the status (Sent/Failed)
+
+## Troubleshooting
+
+- If you see "cannot connect to chrome at localhost:9222", make sure Chrome is running with remote debugging enabled
+- Make sure you're logged into both Telegram Web and Airtable in the Chrome instance
+- Check that the ngrok URL in your Airtable script matches the current ngrok URL
+- If messages aren't being sent, check the console output for errors
+- If the first attempt fails but subsequent attempts work, try keeping the Chrome window visible (not minimized)
+- If messages are being sent multiple times, check your Airtable automation settings to ensure it's not triggering multiple times for the same record
+
+## Restarting the Process
+
+If you need to restart the application or if you accidentally closed the Chrome window:
+
+1. Kill the Node.js process:
+   ```
+   powershell -Command "Stop-Process -Name node -Force"
+   ```
+
+2. Start Chrome with remote debugging enabled:
+   ```
+   start "" "chrome-win64\chrome.exe" --remote-debugging-port=9222
+   ```
+
+3. Log in to Telegram Web (https://web.telegram.org/k/) and Airtable in this Chrome instance
+
+4. Start the application again:
    ```
    npm run dev
    ```
-- Build the TypeScript code:
-   ```
-   npm run build
-   ```
-- Monitor ngrok traffic:
-   Visit `http://127.0.0.1:4040` in your browser
 
 ## Notes
 
-- This is a simple implementation that simulates sending Telegram messages and updating Airtable cells
-- To implement actual functionality, you would need to:
-  - Use a Telegram client library like `telegram-td` to send real messages
-  - Use the Airtable API client to update real cells
+- This implementation uses browser automation to interact with Telegram Web and Airtable
 - The ngrok URL will change each time you restart ngrok (unless you have a paid plan)
-
-## License
-
-ISC
+- For security, don't leave Chrome with remote debugging enabled when not in use

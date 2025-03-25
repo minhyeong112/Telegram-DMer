@@ -1,4 +1,4 @@
-import { createServer, IncomingMessage, ServerResponse } from 'http';
+import express from 'express';
 import { sendMessage } from './telegram';
 import { updateAirtableCell } from './airtable';
 
@@ -8,65 +8,94 @@ interface RequestData {
   airtableUrl: string;
 }
 
+/**
+ * Start the HTTP server
+ * @param port The port to listen on
+ */
 export function startServer(port: number): void {
-  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    // Only accept POST requests
-    if (req.method !== 'POST') {
-      res.statusCode = 405;
-      res.end('Method Not Allowed');
+  const app = express();
+  
+  // Queue for processing requests sequentially
+  const requestQueue: RequestData[] = [];
+  let isProcessing = false;
+  
+  // Function to process the next request in the queue
+  async function processNextRequest() {
+    if (requestQueue.length === 0 || isProcessing) {
       return;
     }
-
+    
+    isProcessing = true;
+    const data = requestQueue.shift()!;
+    
     try {
-      // Parse request body
-      const body = await parseRequestBody(req);
-      const data = JSON.parse(body) as RequestData;
-
-      // Validate request data
-      if (!data.telegramId || !data.message || !data.airtableUrl) {
-        res.statusCode = 400;
-        res.end('Bad Request: Missing required fields');
-        return;
-      }
-
-      console.log(`Received request to send message to ${data.telegramId}`);
-
+      console.log(`Processing request for ${data.telegramId}`);
+      
       // Send message via Telegram
       const success = await sendMessage(data.telegramId, data.message);
-
+      
       // Update Airtable cell
       const status = success ? 'Sent' : 'Failed';
       await updateAirtableCell(data.airtableUrl, status);
-
-      // Send response
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ success, status }));
+      
+      console.log(`Completed request for ${data.telegramId}`);
+    } catch (error) {
+      console.error(`Error processing request for ${data.telegramId}:`, error);
+    } finally {
+      isProcessing = false;
+      // Process the next request in the queue
+      setTimeout(processNextRequest, 1000); // Add a small delay between requests
+    }
+  }
+  
+  // Parse JSON request bodies
+  app.use(express.json());
+  
+  // Health check endpoint
+  app.get('/', (req, res) => {
+    res.status(200).send('Telegram DMer is running');
+  });
+  
+  // Main endpoint for sending messages
+  app.post('/', async (req, res) => {
+    try {
+      const data = req.body as RequestData;
+      
+      // Validate request data
+      if (!data.telegramId || !data.message || !data.airtableUrl) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields: telegramId, message, or airtableUrl'
+        });
+      }
+      
+      console.log(`Received request to send message to ${data.telegramId}`);
+      
+      // Add the request to the queue
+      requestQueue.push(data);
+      
+      // Start processing if not already processing
+      if (!isProcessing) {
+        processNextRequest();
+      }
+      
+      // Send immediate response
+      res.status(202).json({
+        success: true,
+        status: 'Queued',
+        message: 'Request queued for processing'
+      });
     } catch (error) {
       console.error('Error processing request:', error);
-      res.statusCode = 500;
-      res.end('Internal Server Error');
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
     }
   });
-
-  server.listen(port);
-}
-
-function parseRequestBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    
-    req.on('data', (chunk) => {
-      chunks.push(chunk);
-    });
-    
-    req.on('end', () => {
-      const body = Buffer.concat(chunks).toString();
-      resolve(body);
-    });
-    
-    req.on('error', (err) => {
-      reject(err);
-    });
+  
+  // Start the server
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
   });
 }
